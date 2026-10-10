@@ -1,0 +1,74 @@
+{
+  "name": "campusos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CampusOS — One Event. One Intelligence Layer. AI-powered hackathon & campus event management.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && npm run test:pptx && node --conditions=react-server --import tsx --test tests/rate-limit.test.ts",
+    "test:coverage": "vitest run --coverage && npm run test:pptx && node --conditions=react-server --import tsx --test tests/rate-limit.test.ts",
+    "test:e2e": "playwright test",
+    "test:pptx": "node --conditions=react-server --import tsx --test tests/pptx-text.test.ts",
+    "db:setup": "prisma db push",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma db push --force-reset && prisma db seed",
+    "db:studio": "prisma studio",
+    "storage:migrate": "node --conditions=react-server --import tsx scripts/migrate-storage.ts",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.900.0",
+    "@aws-sdk/s3-request-presigner": "^3.900.0",
+    "@google/genai": "^1.20.0",
+    "@prisma/client": "^6.16.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.39.0",
+    "bcryptjs": "^3.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns-tz": "^3.2.0",
+    "jose": "^6.0.12",
+    "jszip": "^3.10.2",
+    "lucide-react": "^0.544.0",
+    "next": "^15.5.4",
+    "next-intl": "^4.14.9",
+    "nodemailer": "^10.0.16",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "^2.15.4",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^22.18.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitest/coverage-v8": "^3.2.7",
+    "prisma": "^6.16.0",
+    "tailwindcss": "^4.1.13",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "react-is": "^19.1.1"
+  }
+}

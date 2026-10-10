@@ -1,0 +1,518 @@
+// CampusOS — shared data model
+// One schema for the full event lifecycle: event → registration → team →
+// submission → AI screening → logistics → judging → review → results.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  passwordHash       String
+  role               String    @default("PARTICIPANT")
+  institution        String?
+  isDemo             Boolean   @default(false)
+  emailNotifications Boolean   @default(true)
+  emailVerifiedAt    DateTime?
+  sessionVersion     Int       @default(0)
+  locale             String    @default("en")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  ownedEvents      Event[]              @relation("EventOwner")
+  registrations    Registration[]
+  teamMemberships  TeamMember[]
+  ledTeams         Team[]               @relation("TeamLeader")
+  judgeRoles       EventJudge[]
+  uploadedFiles    SubmissionFile[]
+  revisions        SubmissionRevision[]
+  aiReviewsCreated AIReview[]           @relation("AIReviewCreator")
+  aiReviewsDecided AIReview[]           @relation("AIReviewReviewer")
+  ticketsOpened    ReviewTicket[]       @relation("TicketOpener")
+  ticketsResolved  ReviewTicket[]       @relation("TicketResolver")
+  checkInsDone     AttendanceRecord[]   @relation("CheckInOperator")
+  auditLogs        AuditLog[]
+  authTokens       AuthToken[]
+  invitationsSent  Invitation[]         @relation("InvitationSender")
+  prizeAwardsGiven PrizeAward[]         @relation("PrizeAwarder")
+}
+
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  /// "PASSWORD_RESET" or "EMAIL_VERIFY"
+  type      String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  email       String
+  role        String
+  eventId     String?
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  event     Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitedBy User   @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email, createdAt])
+  @@index([eventId, createdAt])
+  @@index([expiresAt])
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+
+model Event {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  tagline              String?
+  description          String
+  venue                String?
+  startsAt             DateTime
+  endsAt               DateTime
+  registrationOpensAt  DateTime
+  registrationClosesAt DateTime
+  submissionDeadline   DateTime
+  timeZone             String   @default("Asia/Kolkata")
+  status               String   @default("DRAFT")
+  eligibility          String?
+  maxParticipants      Int?
+  minTeamSize          Int      @default(1)
+  maxTeamSize          Int      @default(4)
+  /// JSON array of { key, label, type: "text"|"textarea"|"select"|"checkbox", required, options? }
+  registrationFields   Json     @default(dbgenerated("'[]'"))
+  scoringMethod        String   @default("MEAN")
+  /// Spread (0–100 normalised points) between judges that triggers a FairJudge review flag
+  discrepancyThreshold Float    @default(20)
+  judgesPerSubmission  Int      @default(2)
+  /// Independent scoring stays private until an authorised reviewer opens the review stage.
+  scoresRevealed       Boolean  @default(false)
+  resultsPublished     Boolean  @default(false)
+  isDemo               Boolean  @default(false)
+  ownerId              String
+  owner                User     @relation("EventOwner", fields: [ownerId], references: [id])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tracks        Track[]
+  criteria      RubricCriterion[]
+  registrations Registration[]
+  teams         Team[]
+  submissions   Submission[]
+  judges        EventJudge[]
+  assignments   JudgeAssignment[]
+  tickets       ReviewTicket[]
+  rooms         Room[]
+  attendance    AttendanceRecord[]
+  results       Result[]
+  prizes        Prize[]
+  auditLogs     AuditLog[]
+  emailLogs     EmailLog[]
+  invitations   Invitation[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Track {
+  id          String  @id @default(cuid())
+  eventId     String
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+
+  teams       Team[]
+  submissions Submission[]
+  results     Result[]
+  prizes      Prize[]
+
+  @@unique([eventId, name])
+}
+
+model RubricCriterion {
+  id          String  @id @default(cuid())
+  eventId     String
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  weight      Float   @default(1)
+  maxScore    Int     @default(10)
+  order       Int     @default(0)
+
+  @@unique([eventId, name])
+}
+
+// ─── Registration & teams ────────────────────────────────────────────────────
+
+model Registration {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String   @default("PENDING")
+  answers     Json     @default(dbgenerated("'{}'"))
+  /// Opaque token encoded into the participant's QR code
+  checkInCode String   @unique
+  isDemo      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  seat       SeatAssignment?
+  attendance AttendanceRecord?
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+}
+
+model Team {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name       String
+  inviteCode String   @unique
+  trackId    String?
+  track      Track?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  leaderId   String
+  leader     User     @relation("TeamLeader", fields: [leaderId], references: [id])
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  members    TeamMember[]
+  submission Submission?
+
+  @@unique([eventId, name])
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Denormalised so the database itself enforces one team per user per event
+  eventId  String
+  role     String   @default("MEMBER")
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@unique([eventId, userId])
+}
+
+// ─── Submissions ─────────────────────────────────────────────────────────────
+
+model Submission {
+  id           String    @id @default(cuid())
+  eventId      String
+  event        Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  teamId       String    @unique
+  team         Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  title        String
+  abstract     String
+  trackId      String?
+  track        Track?    @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  technologies Json
+  repoUrl      String?
+  demoUrl      String?
+  status       String    @default("DRAFT")
+  version      Int       @default(1)
+  submittedAt  DateTime?
+  isDemo       Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  files       SubmissionFile[]
+  revisions   SubmissionRevision[]
+  aiReviews   AIReview[]
+  assignments JudgeAssignment[]
+  tickets     ReviewTicket[]
+  result      Result?
+  prizeAwards PrizeAward[]
+
+  @@index([eventId, status])
+}
+
+model SubmissionFile {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String
+  size         Int
+  storageKey   String     @unique
+  uploadedById String
+  uploadedBy   User       @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime   @default(now())
+}
+
+model SubmissionRevision {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  version      Int
+  /// Snapshot of title/abstract/track/technologies/links at the time of the change
+  snapshot     Json
+  note         String?
+  createdById  String
+  createdBy    User       @relation(fields: [createdById], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@index([submissionId])
+}
+
+// ─── AI screening (suggestions only — never a decision) ─────────────────────
+
+model AIReview {
+  id                String     @id @default(cuid())
+  submissionId      String
+  submission        Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  model             String
+  mode              String
+  status            String     @default("PENDING_HUMAN_REVIEW")
+  summary           String
+  suggestedTrack    String?
+  trackFitScore     Int?
+  trackFitRationale String?
+  /// [{ criterion, observation, signal: "strength"|"concern"|"neutral" }]
+  observations      Json       @default(dbgenerated("'[]'"))
+  /// ["Demo video link missing", ...]
+  missingInfo       Json       @default(dbgenerated("'[]'"))
+  /// [{ source: "abstract"|"file:<name>"|"repo", quote }]
+  evidence          Json       @default(dbgenerated("'[]'"))
+  extracted         Json       @default(dbgenerated("'{}'"))
+  rawOutput         Json?
+  humanDecisionNote String?
+  reviewedById      String?
+  reviewedBy        User?      @relation("AIReviewReviewer", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime?
+  createdById       String
+  createdBy         User       @relation("AIReviewCreator", fields: [createdById], references: [id])
+  createdAt         DateTime   @default(now())
+
+  @@index([submissionId])
+}
+
+// ─── Judging ─────────────────────────────────────────────────────────────────
+
+model EventJudge {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertise String?
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  assignments JudgeAssignment[]
+
+  @@unique([eventId, userId])
+}
+
+model JudgeAssignment {
+  id           String     @id @default(cuid())
+  eventId      String
+  event        Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventJudgeId String
+  eventJudge   EventJudge @relation(fields: [eventJudgeId], references: [id], onDelete: Cascade)
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  status       String     @default("ASSIGNED")
+  createdAt    DateTime   @default(now())
+
+  evaluation Evaluation?
+
+  @@unique([eventJudgeId, submissionId])
+  @@index([eventId])
+}
+
+model Evaluation {
+  id           String          @id @default(cuid())
+  assignmentId String          @unique
+  assignment   JudgeAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  /// { [criterionId]: number }
+  scores       Json            @default(dbgenerated("'{}'"))
+  /// Weighted score normalised to 0–100
+  totalScore   Float?
+  feedback     String?
+  status       String          @default("DRAFT")
+  /// Set by a FairJudge reviewer decision; excluded evaluations do not count toward results
+  excluded     Boolean         @default(false)
+  isDemo       Boolean         @default(false)
+  submittedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+model ReviewTicket {
+  id                 String     @id @default(cuid())
+  eventId            String
+  event              Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  submissionId       String
+  submission         Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reason             String
+  spread             Float
+  status             String     @default("OPEN")
+  decision           String?
+  /// Evaluation affected by an EXCLUDE_EVALUATION / REQUEST_RESCORE decision
+  targetEvaluationId String?
+  decisionNote       String?
+  openedById         String
+  openedBy           User       @relation("TicketOpener", fields: [openedById], references: [id])
+  resolvedById       String?
+  resolvedBy         User?      @relation("TicketResolver", fields: [resolvedById], references: [id])
+  resolvedAt         DateTime?
+  createdAt          DateTime   @default(now())
+
+  @@index([eventId, status])
+}
+
+// ─── Logistics ───────────────────────────────────────────────────────────────
+
+model Room {
+  id       String  @id @default(cuid())
+  eventId  String
+  event    Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name     String
+  building String?
+  capacity Int
+
+  seats SeatAssignment[]
+
+  @@unique([eventId, name])
+}
+
+model SeatAssignment {
+  id             String       @id @default(cuid())
+  roomId         String
+  room           Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  seatLabel      String
+  createdAt      DateTime     @default(now())
+
+  @@unique([roomId, seatLabel])
+}
+
+model AttendanceRecord {
+  id             String       @id @default(cuid())
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  method         String
+  checkedInAt    DateTime     @default(now())
+  checkedInById  String
+  checkedInBy    User         @relation("CheckInOperator", fields: [checkedInById], references: [id])
+
+  @@index([eventId])
+}
+
+// ─── Results & audit ─────────────────────────────────────────────────────────
+
+model Result {
+  id           String     @id @default(cuid())
+  eventId      String
+  event        Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  trackId      String?
+  track        Track?     @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  rank         Int
+  trackRank    Int?
+  finalScore   Float
+  judgeCount   Int
+  method       String
+  computedAt   DateTime   @default(now())
+
+  @@index([eventId, rank])
+  @@index([eventId, trackId, trackRank])
+}
+
+model Prize {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  trackId     String?
+  track       Track?   @relation(fields: [trackId], references: [id], onDelete: SetNull)
+  name        String
+  rank        Int      @default(1)
+  description String?
+  amount      Float?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  award PrizeAward?
+
+  @@unique([eventId, trackId, name])
+  @@index([eventId, trackId])
+}
+
+model PrizeAward {
+  id           String     @id @default(cuid())
+  prizeId      String     @unique
+  prize        Prize      @relation(fields: [prizeId], references: [id], onDelete: Cascade)
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  awardedById  String
+  awardedBy    User       @relation("PrizeAwarder", fields: [awardedById], references: [id])
+  awardedAt    DateTime   @default(now())
+  note         String?
+
+  @@index([submissionId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  eventId    String?
+  event      Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json     @default(dbgenerated("'{}'"))
+  createdAt  DateTime @default(now())
+
+  @@index([eventId, createdAt])
+  @@index([createdAt])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  template  String
+  subject   String
+  /// "SENT" or "FAILED"
+  status    String
+  error     String?
+  eventId   String?
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}

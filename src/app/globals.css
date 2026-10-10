@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* ─── CampusOS design tokens ─────────────────────────────────────────────── */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, SFMono-Regular, monospace;
+
+  /* Ink — dark navy text scale */
+  --color-ink-950: #0b1230;
+  --color-ink-900: #111a3d;
+  --color-ink-800: #1d2754;
+  --color-ink-700: #333e6b;
+  --color-ink-600: #4b5580;
+  --color-ink-500: #6a7397;
+  --color-ink-400: #9097b3;
+  --color-ink-300: #b9bed2;
+  --color-ink-200: #dcdfeb;
+  --color-ink-100: #eceef5;
+  --color-ink-50: #f6f7fb;
+
+  /* Brand — indigo → violet */
+  --color-brand-50: #f0f0ff;
+  --color-brand-100: #e3e3ff;
+  --color-brand-200: #cbcaff;
+  --color-brand-300: #a9a5ff;
+  --color-brand-400: #8a7fff;
+  --color-brand-500: #6d5cf6;
+  --color-brand-600: #5b45e6;
+  --color-brand-700: #4b37c4;
+  --color-brand-800: #3d2f9b;
+  --color-brand-900: #33297a;
+
+  --color-canvas: #f7f8fc;
+  --color-surface: #ffffff;
+  --color-line: #e6e8f1;
+
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+
+  --shadow-card: 0 1px 2px rgb(17 26 61 / 0.04), 0 4px 16px -6px rgb(17 26 61 / 0.08);
+  --shadow-pop: 0 12px 40px -12px rgb(17 26 61 / 0.25);
+
+  --animate-fade-in: fade-in 180ms ease-out;
+  --animate-scale-in: scale-in 160ms ease-out;
+  --animate-pulse-dot: pulse-dot 1.8s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink-900);
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: var(--color-brand-200);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Subtle dotted grid used on hero and empty areas */
+  .bg-grid {
+    background-image: radial-gradient(circle at 1px 1px, rgb(17 26 61 / 0.07) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+  .text-gradient {
+    background: linear-gradient(100deg, var(--color-brand-600), #8b5cf6 55%, #c026d3);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .ring-brand-soft {
+    box-shadow: 0 0 0 4px rgb(109 92 246 / 0.12);
+  }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}

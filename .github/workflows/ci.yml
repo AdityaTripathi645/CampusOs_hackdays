@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:../.test-data/campusos-test.db
+      CAMPUSOS_TEST_DATABASE_URL: file:../.test-data/campusos-test.db
+      AUTH_SECRET: campusos-test-secret-that-is-long-enough
+      GEMINI_API_KEY: ""
+      EMAIL_DRIVER: console
+      STORAGE_DRIVER: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Prepare isolated SQLite database
+        run: node tests/prepare-test-db.mjs
+      - name: Seed demo data for browser tests
+        run: npm run db:seed
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:coverage
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

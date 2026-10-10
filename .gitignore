@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.next-dev/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts.bak
+.env
+.env.local
+/dev.db*
+/prisma/dev.db*
+storage/uploads/*
+!storage/uploads/.gitkeep
+npm-debug.log*
+.DS_Store

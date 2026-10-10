@@ -203,3 +203,5 @@ src/components/             UI kit (button, card, badge, inputs, table, dialog, 
 
 Times in event forms use the server's local time zone (fine for local development; store a per-event time zone before
 deploying across regions).
+#   C a m p u s O s _ h a c k d a y s  
+ 
